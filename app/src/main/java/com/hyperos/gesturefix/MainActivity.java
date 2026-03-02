@@ -7,9 +7,15 @@ import androidx.appcompat.app.AppCompatActivity;
 
 public class MainActivity extends AppCompatActivity {
 
-    // LSPosed will intercept this method and force it to return true
-    public boolean isModuleActive() {
-        return false;
+    // Internal check: No hooking required
+    private boolean isModuleActive() {
+        try {
+            // This class only exists if Xposed is active in this process
+            Class.forName("de.robv.android.xposed.XposedBridge", false, getClassLoader());
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
     }
 
     @Override
@@ -20,8 +26,11 @@ public class MainActivity extends AppCompatActivity {
         TextView tvStatus = findViewById(R.id.tvStatus);
 
         if (isModuleActive()) {
-            tvStatus.setText("Module is ACTIVE \nGestures Spoofed!");
+            tvStatus.setText("Module Status: ACTIVE");
             tvStatus.setTextColor(Color.parseColor("#00AA00")); // Green
+        } else {
+            tvStatus.setText("Module Status: INACTIVE");
+            tvStatus.setTextColor(Color.RED);
         }
     }
 }
