@@ -91,7 +91,7 @@ public class LauncherFragment extends Fragment {
         @Override
         public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
             // Reuses the item_launcher.xml we defined earlier
-            View v = LayoutInflater.from(context).inflate(R.id.item_launcher, parent, false);
+            View v = LayoutInflater.from(context).inflate(R.layout.item_launcher, parent, false);
             return new ViewHolder(v);
         }
 
