@@ -14,9 +14,11 @@
 
 package com.hyperos.gesturefix;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.view.View;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -38,7 +40,8 @@ public class MainActivity extends AppCompatActivity {
     private static final String PREFS_NAME = "launcher_prefs";
 
     /**
-     * Heartbeat method: Hooked by Xposed to return true.
+     * Hook point for LSPosed. 
+     * If the module is active, the hook will force this to return true.
      */
     public boolean isModuleActive() {
         return false;
@@ -46,71 +49,97 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // 1. Initialize Preferences
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         boolean isDark = prefs.getBoolean("dark_mode", false);
 
-        // AMOLED vs Material You: Dynamic Color only for Light Mode
-        if (!isDark) {
-            DynamicColors.applyToActivitiesIfAvailable(this.getApplication());
+        // 2. Prevent Infinite Loop: Only set mode if it differs from current
+        int targetMode = isDark ? AppCompatDelegate.MODE_NIGHT_YES : AppCompatDelegate.MODE_NIGHT_NO;
+        if (AppCompatDelegate.getDefaultNightMode() != targetMode) {
+            AppCompatDelegate.setDefaultNightMode(targetMode);
         }
 
-        // Apply System Theme
-        AppCompatDelegate.setDefaultNightMode(isDark ? 
-                AppCompatDelegate.MODE_NIGHT_YES : AppCompatDelegate.MODE_NIGHT_NO);
+        // 3. Apply Material You (Dynamic Colors)
+        // Note: Dynamic colors usually look best in Light Mode or Standard Dark.
+        // For AMOLED, we skip dynamic colors to keep it pure black.
+        if (!isDark) {
+            DynamicColors.applyToActivityIfAvailable(this);
+        }
 
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        // 4. Initialize the UI Components
         initNavigation(isDark);
+        
+        // Ensure the preference file is readable by the System (HyperOS Launcher)
+        makePrefsReadable();
     }
 
     private void initNavigation(boolean isDark) {
-        // 1. Setup Toolbar & Theme Toggle
+        // Setup Theme Switcher
         SwitchCompat themeSwitch = findViewById(R.id.themeSwitch);
-        themeSwitch.setChecked(isDark);
-        themeSwitch.setOnCheckedChangeListener((v, isChecked) -> {
-            prefs.edit().putBoolean("dark_mode", isChecked).apply();
-            makePrefsReadable();
-            recreate();
-        });
+        if (themeSwitch != null) {
+            themeSwitch.setChecked(isDark);
+            themeSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                // Save and Recreate ONLY if the value changed
+                if (isChecked != isDark) {
+                    prefs.edit().putBoolean("dark_mode", isChecked).apply();
+                    makePrefsReadable();
+                    recreate();
+                }
+            });
+        }
 
-        // 2. Setup ViewPager2 and TabLayout (The Navigation Menu)
+        // Setup Tabs and ViewPager
         TabLayout tabLayout = findViewById(R.id.tabLayout);
         ViewPager2 viewPager = findViewById(R.id.viewPager);
 
-        viewPager.setAdapter(new FragmentStateAdapter(this) {
-            @NonNull
-            @Override
-            public Fragment createFragment(int position) {
-                return (position == 0) ? new LauncherFragment() : new LogsFragment();
-            }
+        if (viewPager != null && tabLayout != null) {
+            viewPager.setAdapter(new FragmentStateAdapter(this) {
+                @NonNull
+                @Override
+                public Fragment createFragment(int position) {
+                    return (position == 0) ? new LauncherFragment() : new LogsFragment();
+                }
 
-            @Override
-            public int getItemCount() {
-                return 2;
-            }
-        });
+                @Override
+                public int getItemCount() {
+                    return 2;
+                }
+            });
 
-        // Attach Tabs to ViewPager
-        new TabLayoutMediator(tabLayout, viewPager, (tab, position) -> {
-            tab.setText(position == 0 ? "Launchers" : "Logs");
-        }).attach();
+            // Sync TabLayout with ViewPager2
+            new TabLayoutMediator(tabLayout, viewPager, (tab, position) -> {
+                tab.setText(position == 0 ? "Launchers" : "Logs");
+            }).attach();
+        }
     }
 
     public SharedPreferences getPrefs() {
         return prefs;
     }
 
+    /**
+     * Fixes the permission of the XML file so the hooked Launcher 
+     * can read the user's preference settings.
+     */
+    @SuppressLint("SetWorldReadable")
     @SuppressWarnings({"ResultOfMethodCallIgnored"})
     public void makePrefsReadable() {
-        File prefsDir = new File(getApplicationInfo().dataDir, "shared_prefs");
-        File prefsFile = new File(prefsDir, PREFS_NAME + ".xml");
-        if (prefsDir.exists()) {
-            prefsDir.setExecutable(true, false);
-            prefsDir.setReadable(true, false);
-        }
-        if (prefsFile.exists()) {
-            prefsFile.setReadable(true, false);
+        try {
+            File prefsDir = new File(getApplicationInfo().dataDir, "shared_prefs");
+            File prefsFile = new File(prefsDir, PREFS_NAME + ".xml");
+            
+            if (prefsDir.exists()) {
+                prefsDir.setExecutable(true, false);
+                prefsDir.setReadable(true, false);
+            }
+            if (prefsFile.exists()) {
+                prefsFile.setReadable(true, false);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 }
