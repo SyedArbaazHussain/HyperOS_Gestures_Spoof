@@ -1,0 +1,66 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.hyperos.gesturefix'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.hyperos.gesturefix"
+        minSdk 28 // Android 9.0+ (Covers all HyperOS devices)
+        targetSdk 34
+        versionCode 1
+        versionName "1.0-Release"
+
+        // Strip out all unused language strings to keep it lightweight
+        resConfigs "en"
+    }
+
+    buildTypes {
+        release {
+            // Enable heavy optimization for a "One-Time Wonder" footprint
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            
+            // Optimization for the R8 compiler
+            postprocessing {
+                removeUnusedCode true
+                removeUnusedResources true
+                obfuscate true
+                optimizeCode true
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_17
+        targetCompatibility JavaVersion.VERSION_1_17
+    }
+
+    // Ensure resources are compressed
+    bundle {
+        language { enableSplit = false }
+        density { enableSplit = true }
+        abi { enableSplit = true }
+    }
+}
+
+dependencies {
+    // Xposed API: Must be compileOnly so it isn't bundled into the APK
+    compileOnly 'de.robv.android.xposed:api:82'
+
+    // Modern AndroidX UI Components
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    
+    // Material 3: Required for Dynamic Color & AMOLED Card/Switch styles
+    implementation 'com.google.android.material:material:1.12.0'
+
+    // Navigation: Required for the Tab Menu and Swipeable Logs
+    implementation 'androidx.viewpager2:viewpager2:1.1.0'
+    implementation 'androidx.fragment:fragment:1.8.0'
+    implementation 'androidx.recyclerview:recyclerview:1.3.2'
+}
