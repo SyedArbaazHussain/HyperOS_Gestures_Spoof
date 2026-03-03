@@ -44,32 +44,32 @@ public class MainActivity extends AppCompatActivity {
         startLogStream();
     }
 
-    private void runRootElevatedFix() {
+   private void runRootElevatedFix() {
     new Thread(() -> {
         try {
             Process p = Runtime.getRuntime().exec("su");
             DataOutputStream os = new DataOutputStream(p.getOutputStream());
 
-            // 1. Force the Android Navigation Mode to '2' (Gestures)
+            // 1. Force the Global Navigation Mode to '2' (Gestures)
             os.writeBytes("settings put secure navigation_mode 2\n");
             
-            // 2. Force the Xiaomi-specific gesture flag
-            os.writeBytes("settings put global force_fsg_nav_bar 1\n");
-            
-            // 3. Enable the underlying Android gestural overlay
+            // 2. Enable the AOSP Gestural Overlay (This is the magic fix)
             os.writeBytes("cmd overlay enable com.android.internal.systemui.navbar.gestural\n");
 
-            // 4. CRITICAL: Tell the system navigation is handled by the framework, not the launcher
-            os.writeBytes("settings put secure sw_fs_gesture_fixed_mode 1\n");
+            // 3. Disable the Button navigation overlay just in case
+            os.writeBytes("cmd overlay disable com.android.internal.systemui.navbar.threebutton\n");
 
-            // 5. Restart SystemUI
+            // 4. Force Xiaomi FSG Flag
+            os.writeBytes("settings put global force_fsg_nav_bar 1\n");
+
+            // 5. Restart SystemUI to bind the new overlay
             os.writeBytes("pkill -f com.android.systemui\n");
             
             os.writeBytes("exit\n");
             os.flush();
             p.waitFor();
             
-            runOnUiThread(() -> tvLogs.append("\n[ROOT] Navigation mode forced. Testing persistence..."));
+            runOnUiThread(() -> tvLogs.append("\n[ROOT] AOSP Gestures forced via overlay."));
         } catch (Exception e) {
             runOnUiThread(() -> tvLogs.append("\n[ROOT ERROR] " + e.getMessage()));
         }

@@ -16,32 +16,36 @@ public class HyperOSLauncherSpoofer implements IXposedHookLoadPackage {
     @Override
     public void handleLoadPackage(final LoadPackageParam lpparam) throws Throwable {
         
-        // 1. SELF-HOOK
+        // 1. SELF-HOOK (App Status)
         if (lpparam.packageName.equals("com.hyperos.gesturefix")) {
             XposedHelpers.findAndHookMethod("com.hyperos.gesturefix.MainActivity", lpparam.classLoader, 
                 "isModuleActive", XC_MethodReplacement.returnConstant(true));
         }
 
-        // 2. THE SYSTEM & SYSTEMUI OVERRIDES
-        if (lpparam.packageName.equals("android") || lpparam.packageName.equals("com.android.systemui")) {
+        // 2. THE SYSTEM FRAMEWORK HOOKS (Package: android)
+        if (lpparam.packageName.equals("android")) {
             
-            // Force the MiuiSettings to report Gestures are ON
+            // HOOK: Overlay Manager (Prevents system from disabling the Gestures we force via Root)
             try {
-                Class<?> miuiSettings = XposedHelpers.findClassIfExists("android.provider.MiuiSettings$System", lpparam.classLoader);
-                if (miuiSettings != null) {
-                    XposedHelpers.findAndHookMethod(miuiSettings, "getBoolean", 
-                        android.content.ContentResolver.class, String.class, boolean.class, new XC_MethodHook() {
+                Class<?> oms = XposedHelpers.findClassIfExists("com.android.server.om.OverlayManagerService", lpparam.classLoader);
+                if (oms != null) {
+                    XposedHelpers.findAndHookMethod(oms, "setEnabled", 
+                        String.class, boolean.class, int.class, new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
-                            if ("force_fsg_nav_bar".equals(param.args[1])) {
-                                param.setResult(true);
+                            String packageName = (String) param.args[0];
+                            boolean enable = (boolean) param.args[1];
+                            // Stop any attempt to disable the AOSP Gestural Overlay
+                            if (packageName.equals("com.android.internal.systemui.navbar.gestural") && !enable) {
+                                Log.e(TAG, "BLOCKED attempt to disable Gestural Overlay!");
+                                param.setResult(true); 
                             }
                         }
                     });
                 }
-            } catch (Throwable ignored) {}
+            } catch (Throwable t) { Log.e(TAG, "OMS Hook Failed: " + t.getMessage()); }
 
-            // AMS Reset Blocker
+            // HOOK: Activity Manager (Prevents force-reverting to MIUI Launcher)
             try {
                 Class<?> ams = XposedHelpers.findClassIfExists("com.android.server.wm.ActivityTaskManagerService", lpparam.classLoader);
                 if (ams != null) {
@@ -59,7 +63,7 @@ public class HyperOSLauncherSpoofer implements IXposedHookLoadPackage {
             } catch (Throwable t) { Log.e(TAG, "AMS Error: " + t.getMessage()); }
         }
 
-        // 3. SETTINGS BYPASS
+        // 3. SETTINGS BYPASS (Bypasses the "Not possible" popup in Settings)
         if (lpparam.packageName.equals("com.xiaomi.misettings") || lpparam.packageName.equals("com.android.settings")) {
             try {
                 Class<?> navUtils = XposedHelpers.findClassIfExists("miui.util.MiuiNavUtils", lpparam.classLoader);
