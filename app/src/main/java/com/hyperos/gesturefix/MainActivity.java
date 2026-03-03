@@ -16,7 +16,8 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvStatus, tvLogs;
     private final Handler handler = new Handler(Looper.getMainLooper());
     
-    public boolean isModuleActive() { return false; } // Hooked by Xposed
+    // This method is hooked by LSPosed to return true
+    public boolean isModuleActive() { return false; }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -27,6 +28,7 @@ public class MainActivity extends AppCompatActivity {
         tvLogs = findViewById(R.id.tvLogs);
         Button btnFix = findViewById(R.id.btnFix);
 
+        // Update UI based on LSPosed status
         if (isModuleActive()) {
             tvStatus.setText("LSPosed: ACTIVE");
             tvStatus.setTextColor(Color.GREEN);
@@ -35,32 +37,43 @@ public class MainActivity extends AppCompatActivity {
             tvStatus.setTextColor(Color.RED);
         }
 
-        btnFix.setOnClickListener(v -> runRootElevatedFix());
+        if (btnFix != null) {
+            btnFix.setOnClickListener(v -> runRootElevatedFix());
+        }
+        
         startLogStream();
     }
 
     private void runRootElevatedFix() {
         new Thread(() -> {
             try {
+                // Start the root process
                 Process p = Runtime.getRuntime().exec("su");
                 DataOutputStream os = new DataOutputStream(p.getOutputStream());
 
-                // Force the Gesture Flag and the Hide Gesture Line Flag
+                // Write the commands to the root shell
                 os.writeBytes("settings put global force_fsg_nav_bar 1\n");
                 os.writeBytes("settings put global hide_gesture_line 1\n");
-                
-                // Enable the Android Gestural Overlay
                 os.writeBytes("cmd overlay enable com.android.internal.systemui.navbar.gestural\n");
-
-                // Kill SystemUI to force it to reload the new database values
                 os.writeBytes("pkill -f com.android.systemui\n");
                 
                 os.writeBytes("exit\n");
                 os.flush();
-                os.waitFor();
-                runOnUiThread(() -> tvLogs.append("\n[ROOT] Applied changes and restarted SystemUI."));
+
+                // FIX: Call waitFor() on the Process 'p', not the DataOutputStream 'os'
+                int result = p.waitFor(); 
+                
+                runOnUiThread(() -> {
+                    if (tvLogs != null) {
+                        tvLogs.append("\n[ROOT] Applied changes (Exit Code: " + result + "). Restarting SystemUI...");
+                    }
+                });
             } catch (Exception e) {
-                runOnUiThread(() -> tvLogs.append("\n[ROOT ERROR] " + e.getMessage()));
+                runOnUiThread(() -> {
+                    if (tvLogs != null) {
+                        tvLogs.append("\n[ROOT ERROR] " + e.getMessage());
+                    }
+                });
             }
         }).start();
     }
@@ -68,7 +81,7 @@ public class MainActivity extends AppCompatActivity {
     private void startLogStream() {
         new Thread(() -> {
             try {
-                // Fetch logs with our specific HGS_LOG tag
+                // Fetch current logs for our specific tag
                 Process process = Runtime.getRuntime().exec("logcat -d HGS_LOG:V *:S");
                 BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
                 StringBuilder sb = new StringBuilder();
@@ -77,8 +90,15 @@ public class MainActivity extends AppCompatActivity {
                     sb.append(line).append("\n");
                 }
                 String logs = sb.toString();
-                handler.post(() -> tvLogs.setText(logs.isEmpty() ? "Waiting for system events..." : logs));
+                
+                handler.post(() -> {
+                    if (tvLogs != null) {
+                        tvLogs.setText(logs.isEmpty() ? "Waiting for system events..." : logs);
+                    }
+                });
             } catch (Exception ignored) {}
+
+            // Repeat the log check every 2.5 seconds
             handler.postDelayed(this::startLogStream, 2500);
         }).start();
     }

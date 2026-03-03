@@ -2,25 +2,41 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:gravity="center"
     android:orientation="vertical"
-    android:padding="32dp">
+    android:padding="16dp"
+    android:background="#121212">
 
     <TextView
         android:id="@+id/tvStatus"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Module is INACTIVE"
-        android:textColor="#FF0000"
-        android:textSize="24sp"
+        android:text="LSPosed: Checking..."
+        android:textSize="18sp"
         android:textStyle="bold" />
 
-    <TextView
-        android:layout_width="wrap_content"
+    <Button
+        android:id="@+id/btnFix"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:gravity="center"
-        android:text="If this text is red, LSPosed is not hooking the app. If it turns green, the core is working."
-        android:textSize="14sp" />
+        android:layout_marginTop="20dp"
+        android:text="Run Brute Force Fix" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="20dp"
+        android:background="#1E1E1E">
+
+        <TextView
+            android:id="@+id/tvLogs"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="8dp"
+            android:text="Waiting for logs..."
+            android:textColor="#00FF00"
+            android:fontFamily="monospace"
+            android:textSize="12sp" />
+    </ScrollView>
 
 </LinearLayout>
