@@ -12,73 +12,65 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
 
 public class HyperOSLauncherSpoofer implements IXposedHookLoadPackage {
 
+    private static final String TAG = "HGS_DEBUG: ";
+
     @Override
     public void handleLoadPackage(final LoadPackageParam lpparam) throws Throwable {
-
-        // 1. UI HEARTBEAT
+        
+        // HEARTBEAT & SELF-LOGGING
         if (lpparam.packageName.equals("com.hyperos.gesturefix")) {
-            XposedHelpers.findAndHookMethod("com.hyperos.gesturefix.MainActivity", lpparam.classLoader, "isModuleActive", XC_MethodReplacement.returnConstant(true));
+            XposedHelpers.findAndHookMethod("com.hyperos.gesturefix.MainActivity", lpparam.classLoader, 
+                "isModuleActive", XC_MethodReplacement.returnConstant(true));
         }
 
-        // 2. GLOBAL SYSTEM & UI HOOKS
+        // BRUTAL FRAMEWORK HOOKS
         if (lpparam.packageName.equals("android") || 
             lpparam.packageName.equals("com.android.systemui") || 
-            lpparam.packageName.equals("com.android.settings") || 
             lpparam.packageName.equals("com.xiaomi.misettings")) {
 
-            try {
-                // FORCE GESTURE FLAG: Intercepts when any app asks if Gestures are enabled
-                XposedHelpers.findAndHookMethod(Settings.Global.class, "getInt", 
-                    ContentResolver.class, String.class, int.class, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                        String name = (String) param.args[1];
-                        if ("force_fsg_nav_bar".equals(name) || "hide_gesture_line".equals(name)) {
-                            param.setResult(1); 
-                        }
-                    }
-                });
+            XposedBridge.log(TAG + "Infiltrating " + lpparam.packageName);
 
-                // SPOOF NAV UTILS: Lies about launcher compatibility
+            // 1. Force the Gesture Flag at the Database level
+            XposedHelpers.findAndHookMethod(Settings.Global.class, "getInt", 
+                ContentResolver.class, String.class, int.class, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    String key = (String) param.args[1];
+                    if ("force_fsg_nav_bar".equals(key) || "hide_gesture_line".equals(key)) {
+                        param.setResult(1);
+                    }
+                }
+            });
+
+            // 2. Kill the "Default Launcher" check
+            try {
                 Class<?> navUtils = XposedHelpers.findClassIfExists("miui.util.MiuiNavUtils", lpparam.classLoader);
                 if (navUtils != null) {
-                    XposedHelpers.findAndHookMethod(navUtils, "isSupportFullscreenGesture", android.content.Context.class, XC_MethodReplacement.returnConstant(true));
-                    XposedHelpers.findAndHookMethod(navUtils, "isDefaultSysLauncher", android.content.Context.class, XC_MethodReplacement.returnConstant(true));
-                    XposedHelpers.findAndHookMethod(navUtils, "isAllowThirdPartyLauncherGestures", android.content.Context.class, XC_MethodReplacement.returnConstant(true));
+                    XposedHelpers.findAndHookMethod(navUtils, "isDefaultSysLauncher", 
+                        android.content.Context.class, XC_MethodReplacement.returnConstant(true));
+                    XposedHelpers.findAndHookMethod(navUtils, "isSupportFullscreenGesture", 
+                        android.content.Context.class, XC_MethodReplacement.returnConstant(true));
                 }
-            } catch (Throwable t) { XposedBridge.log("HGS Framework Error: " + t.getMessage()); }
+            } catch (Throwable t) { XposedBridge.log(TAG + "NavUtils Hook Failed"); }
         }
 
-        // 3. ACTIVITY MANAGER LOCKDOWN
+        // 3. PREVENT AUTO-REVERT (Activity Manager)
         if (lpparam.packageName.equals("android")) {
             try {
                 Class<?> ams = XposedHelpers.findClassIfExists("com.android.server.wm.ActivityTaskManagerService", lpparam.classLoader);
                 if (ams != null) {
-                    // Prevent the system from "Safety Resetting" the Home app
                     XposedHelpers.findAndHookMethod(ams, "updateDefaultHomeActivity", ComponentName.class, new XC_MethodHook() {
                         @Override
-                        protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        protected void beforeHookedMethod(MethodHookParam param) {
                             ComponentName cn = (ComponentName) param.args[0];
                             if (cn != null && cn.getPackageName().equals("com.miui.home")) {
-                                param.setResult(null); // Stop the reset
+                                XposedBridge.log(TAG + "BLOCKED HyperOS from stealing back the Home screen!");
+                                param.setResult(null);
                             }
                         }
                     });
-                    
-                    // Tell the Task Manager the current Home is supported
-                    XposedHelpers.findAndHookMethod(ams, "isCurrentHomeSupported", XC_MethodReplacement.returnConstant(true));
                 }
-            } catch (Throwable t) { XposedBridge.log("HGS ATMS Error: " + t.getMessage()); }
-        }
-
-        // 4. LAUNCHER SIDE BYPASS
-        if (lpparam.packageName.equals("com.miui.home")) {
-            try {
-                Class<?> deviceConfig = XposedHelpers.findClassIfExists("com.miui.home.launcher.DeviceConfig", lpparam.classLoader);
-                if (deviceConfig != null) {
-                    XposedHelpers.findAndHookMethod(deviceConfig, "isThirdPartyLauncherSupported", XC_MethodReplacement.returnConstant(true));
-                }
-            } catch (Throwable ignored) {}
+            } catch (Throwable t) { XposedBridge.log(TAG + "AMS Lockdown Failed"); }
         }
     }
 }

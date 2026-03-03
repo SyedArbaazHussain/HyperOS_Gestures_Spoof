@@ -30,10 +30,14 @@
             android:value="true" />
         <meta-data
             android:name="xposeddescription"
-            android:value="Fixes gesture navigation on HyperOS 3 when using a third-party launcher." />
+            android:value="Brutal Gesture Fix for HyperOS 3.0" />
         <meta-data
             android:name="xposedminversion"
             android:value="93" />
+
+        <meta-data
+            android:name="xposedscope"
+            android:resource="@array/xposedscope" />
 
     </application>
 
