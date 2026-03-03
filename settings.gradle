@@ -4,14 +4,19 @@ pluginManagement {
         mavenCentral()
         gradlePluginPortal()
     }
+}
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
         mavenCentral()
+        // Essential for LSPosed API resolution
         maven { url 'https://api.xposed.info/' }
+        // Fallback for modern dependencies
         maven { url 'https://jitpack.io' }
     }
 }
+
 rootProject.name = "HyperOS_Gestures_Spoof"
 include ':app'
