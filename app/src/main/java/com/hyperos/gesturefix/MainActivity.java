@@ -19,9 +19,8 @@ import java.io.InputStreamReader;
 
 public class MainActivity extends AppCompatActivity {
 
-    private TextView tvStatus, tvAudit;
+    private TextView tvStatus, tvAudit, tvLogs;
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private String lastAuditReport = "";
     private Process logcatProcess;
     private boolean isMonitoring = false;
 
@@ -36,56 +35,63 @@ public class MainActivity extends AppCompatActivity {
 
         // UI Initialization
         tvStatus = findViewById(R.id.tvStatus);
-        tvAudit = findViewById(R.id.tvLogs);
+        tvAudit = findViewById(R.id.tvAudit); // New fixed status view
+        tvLogs = findViewById(R.id.tvLogs);   // New selectable log view
+        
         Button btnFix = findViewById(R.id.btnFix);
         Button btnClear = findViewById(R.id.btnClear);
         Button btnExport = findViewById(R.id.btnExport);
+        Button btnStop = findViewById(R.id.btnStop);
 
-        // Start Monitors
-        startLogcatMonitor();
+        // Set log view as selectable
+        if (tvLogs != null) {
+            tvLogs.setTextIsSelectable(true);
+        }
+
         updateLSPosedStatus();
+        startLogcatMonitor();
 
-        // 1. Fix Button Logic
         if (btnFix != null) {
             btnFix.setOnClickListener(v -> {
                 new Thread(() -> {
                     ShellUtils.applyRootFix();
-                    handler.post(() -> Toast.makeText(MainActivity.this, "Fix Applied. Rebooting UI...", Toast.LENGTH_SHORT).show());
-                    // Re-run audit after a delay to show updated system state
+                    handler.post(() -> {
+                        Toast.makeText(this, "Fix Applied. Rebooting UI...", Toast.LENGTH_SHORT).show();
+                        if (!isMonitoring) startLogcatMonitor(); // Auto-restart logs if stopped
+                    });
                     handler.postDelayed(this::runSystemAudit, 4500);
                 }).start();
             });
         }
 
-        // 2. Clear Button Logic
+        if (btnStop != null) {
+            btnStop.setOnClickListener(v -> stopLogcatMonitor());
+        }
+
         if (btnClear != null) {
             btnClear.setOnClickListener(v -> {
-                if (tvAudit != null) {
-                    tvAudit.setText("--- Logs Cleared ---\n");
-                    tvAudit.scrollTo(0, 0);
+                if (tvLogs != null) {
+                    tvLogs.setText("--- Logs Cleared ---\n");
                 }
-                lastAuditReport = "";
-                runSystemAudit();
-                Toast.makeText(this, "Logs refreshed", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Logs cleared", Toast.LENGTH_SHORT).show();
             });
         }
 
-        // 3. Export Button Logic
         if (btnExport != null) {
-            btnExport.setOnClickListener(v -> exportAuditLog());
+            btnExport.setOnClickListener(v -> exportRealLogs());
         }
 
-        // Initial System Audit
         runSystemAudit();
     }
 
     private void startLogcatMonitor() {
         if (isMonitoring) return;
         isMonitoring = true;
+        if (tvLogs != null) tvLogs.append("\n[Monitor Started]\n");
 
         new Thread(() -> {
             try {
-                // Monitor for HGS_LOG (Xposed) and general Errors (Permission issues)
+                // Monitor HGS_LOG and all System Errors
                 logcatProcess = Runtime.getRuntime().exec(new String[]{"su", "-c", "logcat HGS_LOG:D *:E"});
                 BufferedReader reader = new BufferedReader(new InputStreamReader(logcatProcess.getInputStream()));
                 String line;
@@ -93,34 +99,87 @@ public class MainActivity extends AppCompatActivity {
                 while (isMonitoring && (line = reader.readLine()) != null) {
                     final String logLine = line;
                     handler.post(() -> {
-                        if (tvAudit != null) {
-                            tvAudit.append(logLine + "\n");
+                        if (tvLogs != null) {
+                            tvLogs.append(logLine + "\n");
                             
-                            // Prevent memory lag by truncating after 1000 lines
-                            if (tvAudit.getLineCount() > 1000) {
-                                String currentText = tvAudit.getText().toString();
-                                int midPoint = currentText.indexOf('\n', currentText.length() / 2);
-                                if (midPoint != -1) {
-                                    tvAudit.setText("... [Log Truncated for Performance] ...\n" + currentText.substring(midPoint + 1));
-                                }
+                            // Auto-stop if critical failures are detected to preserve log state
+                            if (logLine.contains("Permission denied") || logLine.contains("FATAL EXCEPTION")) {
+                                // Optional: stopLogcatMonitor(); 
+                            }
+
+                            if (tvLogs.getLineCount() > 1500) {
+                                tvLogs.setText("[Truncated]\n" + tvLogs.getText().toString().substring(2000));
                             }
                         }
                     });
                 }
             } catch (Exception e) {
                 handler.post(() -> {
-                    if (tvAudit != null) tvAudit.append("Logcat Error: " + e.getMessage() + "\n");
+                    if (tvLogs != null) tvLogs.append("Logcat Error: " + e.getMessage() + "\n");
                 });
             }
         }).start();
     }
 
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
+    private void stopLogcatMonitor() {
         isMonitoring = false;
         if (logcatProcess != null) {
             logcatProcess.destroy();
+            logcatProcess = null;
+        }
+        if (tvLogs != null) tvLogs.append("\n[Monitor Stopped]\n");
+        Toast.makeText(this, "Log Capture Stopped", Toast.LENGTH_SHORT).show();
+    }
+
+    private void runSystemAudit() {
+        new Thread(() -> {
+            StringBuilder report = new StringBuilder();
+            report.append("AOSP Overlay: ").append(checkStatus("cmd overlay list | grep gestural")).append("\n");
+            report.append("Nav Mode (2): ").append(checkCommandOutput("settings get secure navigation_mode")).append("\n");
+            report.append("FSG Flag (1): ").append(checkCommandOutput("settings get global force_fsg_nav_bar")).append("\n");
+            report.append("MIUI FSG: ").append(checkCommandOutput("settings get secure miui_fsg_gesture_status")).append("\n");
+            report.append("Injection: ").append(isModuleActive() ? "ACTIVE" : "FAILED");
+
+            handler.post(() -> {
+                if (tvAudit != null) {
+                    tvAudit.setText(report.toString());
+                }
+                updateLSPosedStatus();
+            });
+        }).start();
+    }
+
+    private String checkStatus(String cmd) {
+        return checkCommandOutput(cmd).contains("[x]") ? "ENABLED" : "DISABLED";
+    }
+
+    private String checkCommandOutput(String cmd) {
+        try {
+            Process p = Runtime.getRuntime().exec(new String[]{"su", "-c", cmd});
+            BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+            String line = reader.readLine();
+            return (line != null) ? line.trim() : "null";
+        } catch (Exception e) { return "error"; }
+    }
+
+    private void exportRealLogs() {
+        if (tvLogs == null || tvLogs.getText().toString().isEmpty()) return;
+        
+        String logContent = tvLogs.getText().toString();
+        try {
+            File file = new File(getCacheDir(), "hyperos_gesture_logcat.txt");
+            FileOutputStream stream = new FileOutputStream(file);
+            stream.write(logContent.getBytes());
+            stream.close();
+
+            Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
+            Intent intent = new Intent(Intent.ACTION_SEND);
+            intent.setType("text/plain");
+            intent.putExtra(Intent.EXTRA_STREAM, uri);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(Intent.createChooser(intent, "Export Logcat"));
+        } catch (Exception e) {
+            Toast.makeText(this, "Export Failed", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -132,80 +191,9 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void runSystemAudit() {
-        new Thread(() -> {
-            StringBuilder report = new StringBuilder();
-            report.append("<b>--- HYPEROS GESTURE AUDIT ---</b><br><br>");
-
-            String overlayRaw = checkCommandOutput("cmd overlay list | grep gestural");
-            boolean isEnabled = overlayRaw.contains("[x]");
-            report.append(formatAuditLine("AOSP Overlay (Enabled)", isEnabled));
-
-            String navMode = checkCommandOutput("settings get secure navigation_mode").trim();
-            report.append(formatAuditLine("Nav Mode (Gesture=2): " + navMode, navMode.equals("2")));
-
-            String fsgFlag = checkCommandOutput("settings get global force_fsg_nav_bar").trim();
-            report.append(formatAuditLine("FSG Flag (ON=1): " + fsgFlag, fsgFlag.equals("1")));
-
-            String miuiFsg = checkCommandOutput("settings get secure miui_fsg_gesture_status").trim();
-            report.append(formatAuditLine("MIUI FSG Status: " + miuiFsg, miuiFsg.equals("1")));
-
-            report.append(formatAuditLine("LSPosed Injection Status", isModuleActive()));
-
-            lastAuditReport = report.toString();
-            handler.post(() -> {
-                if (tvAudit != null) {
-                    tvAudit.setText(Html.fromHtml(lastAuditReport, Html.FROM_HTML_MODE_COMPACT));
-                }
-                updateLSPosedStatus();
-            });
-        }).start();
-    }
-
-    private String formatAuditLine(String title, boolean passed) {
-        String color = passed ? "#00FF00" : "#FF0000";
-        String status = passed ? "[PASS] " : "[FAIL] ";
-        return "<font color=\"" + color + "\">" + status + title + "</font><br>";
-    }
-
-    private String checkCommandOutput(String cmd) {
-        try {
-            Process p = Runtime.getRuntime().exec(new String[]{"su", "-c", cmd});
-            BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
-            String line = reader.readLine();
-            return (line != null) ? line : "null";
-        } catch (Exception e) {
-            return "error";
-        }
-    }
-
-    private void exportAuditLog() {
-        if (lastAuditReport.isEmpty()) {
-            Toast.makeText(this, "Run Audit first", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        String plainText = lastAuditReport.replaceAll("<[^>]*>", "")
-                                         .replace("[PASS]", "PASS:")
-                                         .replace("[FAIL]", "FAIL:");
-        try {
-            File cachePath = new File(getCacheDir(), "logs");
-            if (!cachePath.exists()) cachePath.mkdirs();
-
-            File logFile = new File(cachePath, "gesture_audit.txt");
-            FileOutputStream stream = new FileOutputStream(logFile);
-            stream.write(plainText.getBytes());
-            stream.close();
-
-            Uri contentUri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", logFile);
-
-            Intent shareIntent = new Intent(Intent.ACTION_SEND);
-            shareIntent.setType("text/plain");
-            shareIntent.putExtra(Intent.EXTRA_STREAM, contentUri);
-            shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            startActivity(Intent.createChooser(shareIntent, "Share Audit Log"));
-        } catch (Exception e) {
-            Toast.makeText(this, "Export Failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-        }
+    @Override
+    protected void onDestroy() {
+        stopLogcatMonitor();
+        super.onDestroy();
     }
 }
