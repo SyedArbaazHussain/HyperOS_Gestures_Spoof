@@ -23,19 +23,23 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          # We still keep this as a fallback, but the next step handles the heavy lifting
-          cache: gradle
+          # We disable the setup-java cache to let the specialized Gradle action handle it better
+          cache: ''
+
+      - name: Setup Gradle
+        # Modern replacement for gradle-build-action
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: wrapper
+          # Fixes the 'Caching disabled due to pre-existing home' error
+          cache-overwrite-existing: true
 
       - name: Grant Execute Permission for Gradle
         run: chmod +x gradlew
 
       - name: Build with Gradle
-        # Using the official action is the "proper" way to handle caching and configuration-cache
-        uses: gradle/gradle-build-action@v3
-        with:
-          arguments: assembleRelease
-          # This avoids the "single-use daemon" fork by using the runner's environment correctly
-          generate-job-summary: true
+        # Running via shell is the new standard to avoid 'arguments' deprecation
+        run: ./gradlew assembleRelease
 
       - name: Sign APK
         uses: r0adkll/sign-android-release@v1
@@ -57,9 +61,9 @@ jobs:
           name: HyperOS Gesture Fix ${{ github.ref_name }}
           body: |
             ### Automated Release
-            - Built with optimized Gradle 8.2.1
-            - Includes HyperOS Gesture Enforcement logic
-            - Verified for Poco F7
+            - Built with modern `setup-gradle` action
+            - Optimized for HyperOS 3.0 (Poco F7)
+            - Includes persistent boot-fix logic
           draft: false
           prerelease: false
         env:
@@ -69,5 +73,5 @@ jobs:
         if: "!startsWith(github.ref, 'refs/tags/')"
         uses: actions/upload-artifact@v4
         with:
-          name: HyperOS_Gesture_Fix_Debug
+          name: HyperOS_Gesture_Fix_Build
           path: ${{ steps.sign_app.outputs.signedReleaseFile }}
