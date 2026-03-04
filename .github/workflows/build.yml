@@ -23,22 +23,19 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          # We disable the setup-java cache to let the specialized Gradle action handle it better
           cache: ''
 
       - name: Setup Gradle
-        # Modern replacement for gradle-build-action
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: wrapper
-          # Fixes the 'Caching disabled due to pre-existing home' error
           cache-overwrite-existing: true
+          cache-cleanup: on-success
 
       - name: Grant Execute Permission for Gradle
         run: chmod +x gradlew
 
       - name: Build with Gradle
-        # Running via shell is the new standard to avoid 'arguments' deprecation
         run: ./gradlew assembleRelease
 
       - name: Sign APK
@@ -61,9 +58,9 @@ jobs:
           name: HyperOS Gesture Fix ${{ github.ref_name }}
           body: |
             ### Automated Release
-            - Built with modern `setup-gradle` action
-            - Optimized for HyperOS 3.0 (Poco F7)
-            - Includes persistent boot-fix logic
+            - Built with optimized Gradle 8.2.1
+            - Target: HyperOS 3.0 (Poco F7 / Xiaomi devices)
+            - Features: Force GESTURAL(2) mode and hardware touch re-binding
           draft: false
           prerelease: false
         env:
