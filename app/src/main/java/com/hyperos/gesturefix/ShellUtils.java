@@ -14,25 +14,40 @@ public class ShellUtils {
             os.writeBytes("settings put secure miui_fsg_gesture_status 1\n");
 
             // 2. FORCED "SHOW PILL" COMMANDS
-            // On HyperOS, 'hide_gesture_line' must be 0 for the pill to appear.
-            // We set it in multiple namespaces to ensure it sticks.
             os.writeBytes("settings put secure hide_gesture_line 0\n");
             os.writeBytes("settings put system hide_gesture_line 0\n");
             os.writeBytes("settings put global hide_gesture_line 0\n");
 
             // 3. NUCLEAR OVERLAY REFRESH
-            // Toggling the overlay forces SystemUI to re-inflate the navigation bar layout
             os.writeBytes("cmd overlay disable com.android.internal.systemui.navbar.gestural\n");
             os.writeBytes("cmd overlay enable com.android.internal.systemui.navbar.gestural\n");
             os.writeBytes("cmd overlay disable com.android.internal.systemui.navbar.threebutton\n");
 
-            // 4. AGGRESSIVE RESTART SEQUENCE
-            // We kill SystemUI, the Launcher, and the Xiaomi Cloud/Settings sync 
-            // processes that might revert our changes.
+            // 4. TOUCH INTERACTION & INTERACTION CACHE FIX
+            // These lines ensure the system doesn't block the touch layer for gestures
+            os.writeBytes("settings put secure show_gesture_app_switch_hint 1\n");
+            os.writeBytes("settings put secure full_screen_gesture_back_type 1\n");
+            os.writeBytes("settings delete secure last_setup_shown\n");
+
+            // 5. AGGRESSIVE RESTART SEQUENCE
             os.writeBytes("pkill -f com.android.systemui\n");
             os.writeBytes("pkill -f com.miui.home\n");
             os.writeBytes("pkill -f com.xiaomi.misettings\n");
             os.writeBytes("pkill -f com.android.settings\n");
+            
+            // Reset the hardware input processor to bind the new gesture touch areas
+            os.writeBytes("pkill -f android.hardware.input.processor\n");
+
+            // Wait 1.5 seconds for SystemUI to respawn before resetting display metrics
+            os.writeBytes("sleep 1.5\n");
+
+            // 6. HARDWARE COMPOSER (HWC) & LAYOUT RESET
+            os.writeBytes("wm size reset\n");
+            os.writeBytes("wm density reset\n");
+
+            // Disable conflicts and clear input spam
+            os.writeBytes("settings put secure icon_blacklist navbar\n");
+            os.writeBytes("settings put secure show_ime_with_hard_keyboard 0\n");
 
             os.writeBytes("exit\n");
             os.flush();
