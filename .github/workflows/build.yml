@@ -47,6 +47,11 @@ jobs:
           alias: ${{ secrets.KEY_ALIAS }}
           keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
+        env:
+          # This tells the action exactly where the Android SDK lives on the runner
+          ANDROID_HOME: /usr/local/lib/android/sdk
+          # Force the action to use the latest installed build tools
+          BUILD_TOOLS_VERSION: "35.0.0"
 
       - name: Prepare HGS APK
         run: mv ${{ steps.sign_app.outputs.signedReleaseFile }} app/build/outputs/apk/release/HGS.apk
