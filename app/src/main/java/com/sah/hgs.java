@@ -27,7 +27,7 @@ public class hgs extends XposedModule {
                 hook(lp.getClassLoader().loadClass("com.sah.main").getDeclaredMethod("isModuleActive"), 
                      ConstantTrueHooker.class);
             } catch (Exception e) {
-                Log.e(TAG, "Self-hook failed", e);
+                Log.e(TAG, "UI Hook Failed", e);
             }
         }
 
@@ -46,24 +46,24 @@ public class hgs extends XposedModule {
 
             try {
                 hook(cl.loadClass("android.hardware.display.IDisplayManager$Stub$Proxy")
-                        .getDeclaredMethod("getCompositionLuts"), 
-                        SilenceLutsHooker.class);
+                        .getDeclaredMethod("getCompositionLuts"), SilenceLutsHooker.class);
             } catch (NoSuchMethodException e) {
                 hook(cl.loadClass("android.hardware.display.DisplayManager")
-                        .getDeclaredMethod("getCompositionLuts"), 
-                        SilenceLutsHooker.class);
+                        .getDeclaredMethod("getCompositionLuts"), SilenceLutsHooker.class);
             }
 
+            // Tricks SystemUI into thinking the current launcher is gesture-compatible
+            hook(cl.loadClass("com.android.server.wm.ActivityTaskManagerService")
+                    .getDeclaredMethod("isRecentsComponentHomeActivity", int.class), ConstantTrueHooker.class);
+
             hook(cl.loadClass("com.android.server.om.OverlayManagerService")
-                    .getDeclaredMethod("setEnabled", String.class, boolean.class, int.class),
-                    OverlayEnforcementHooker.class);
+                    .getDeclaredMethod("setEnabled", String.class, boolean.class, int.class), OverlayEnforcementHooker.class);
 
             hook(cl.loadClass("com.android.server.wm.ActivityTaskManagerService")
-                    .getDeclaredMethod("updateDefaultHomeActivity", ComponentName.class),
-                    HomeProtectionHooker.class);
+                    .getDeclaredMethod("updateDefaultHomeActivity", ComponentName.class), HomeProtectionHooker.class);
 
         } catch (Throwable t) {
-            Log.e(TAG, "Framework Hook Error", t);
+            Log.e(TAG, "Framework Error", t);
         }
     }
 
@@ -72,29 +72,25 @@ public class hgs extends XposedModule {
             ClassLoader cl = lp.getClassLoader();
 
             hook(cl.loadClass("com.android.systemui.navigationbar.NavigationModeController")
-                    .getDeclaredMethod("onRequestedNavigationModeChange", int.class),
-                    NavModeForcerHooker.class);
+                    .getDeclaredMethod("onRequestedNavigationModeChange", int.class), NavModeForcerHooker.class);
 
             hook(cl.loadClass("com.android.systemui.navigationbar.NavigationModeController")
-                    .getDeclaredMethod("getNavigationMode"),
-                    ConstantTwoHooker.class);
+                    .getDeclaredMethod("getNavigationMode"), ConstantTwoHooker.class);
 
             hook(cl.loadClass("com.android.systemui.statusbar.phone.MiuiGestureStubView")
-                    .getDeclaredMethod("isGestureEnable", Context.class),
-                    ConstantTrueHooker.class);
+                    .getDeclaredMethod("isGestureEnable", Context.class), ConstantTrueHooker.class);
 
         } catch (Throwable t) {
-            Log.e(TAG, "SystemUI Hook Error", t);
+            Log.e(TAG, "SystemUI Error", t);
         }
     }
 
-    // --- HOOKER IMPLEMENTATIONS ---
+    // --- HOOKERS ---
 
     @XposedHooker
     public static class SilenceLutsHooker implements XposedInterface.Hooker {
         @BeforeInvocation
         public static void before(XposedInterface.BeforeHookCallback cb) {
-            // Returns null and skips the transaction to prevent HWC panic
             cb.returnAndSkip(null);
         }
     }
@@ -119,7 +115,6 @@ public class hgs extends XposedModule {
     public static class NavModeForcerHooker implements XposedInterface.Hooker {
         @BeforeInvocation
         public static void before(XposedInterface.BeforeHookCallback cb) {
-            // Force the requested mode to 2 before the method executes
             cb.getArgs()[0] = NAV_BAR_MODE_GESTURAL;
         }
     }
@@ -130,7 +125,7 @@ public class hgs extends XposedModule {
         public static void before(XposedInterface.BeforeHookCallback cb) {
             String pkg = (String) cb.getArgs()[0];
             if (pkg != null && pkg.contains("navbar.gestural")) {
-                cb.getArgs()[1] = true; // Always force 'enabled' to true
+                cb.getArgs()[1] = true;
             }
         }
     }
