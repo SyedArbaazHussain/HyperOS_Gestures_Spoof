@@ -6,17 +6,13 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import io.github.libxposed.api.XposedInterface;
 import io.github.libxposed.api.XposedModule;
-import io.github.libxposed.api.annotations.AfterInvocation;
 import io.github.libxposed.api.annotations.BeforeInvocation;
 import io.github.libxposed.api.annotations.XposedHooker;
 
-/**
- * Modern LSPosed implementation for universal gesture enforcement.
- * Optimized for libxposed context-SNAPSHOT API and SDK 35.
- */
 public class hgs extends XposedModule {
 
     private static final String TAG = "HGS_LOG";
+    private static final int NAV_BAR_MODE_GESTURAL = 2;
 
     public hgs(@NonNull XposedInterface base, @NonNull ModuleLoadedParam param) {
         super(base, param);
@@ -26,22 +22,19 @@ public class hgs extends XposedModule {
     public void onPackageLoaded(@NonNull PackageLoadedParam lp) {
         String packageName = lp.getPackageName();
 
-        // 1. Verification hook for your own app's UI
         if (packageName.equals("com.sah.hgs")) {
             try {
                 hook(lp.getClassLoader().loadClass("com.sah.main").getDeclaredMethod("isModuleActive"), 
                      ConstantTrueHooker.class);
             } catch (Exception e) {
-                Log.e(TAG, "Own App Hook Failed", e);
+                Log.e(TAG, "Self-hook failed", e);
             }
         }
 
-        // 2. Framework-level stability and settings enforcement
         if (packageName.equals("android")) {
             applyFrameworkHooks(lp);
         }
 
-        // 3. SystemUI gesture engine management
         if (packageName.equals("com.android.systemui")) {
             applySystemUIHooks(lp);
         }
@@ -51,9 +44,15 @@ public class hgs extends XposedModule {
         try {
             ClassLoader cl = lp.getClassLoader();
 
-            hook(cl.loadClass("com.android.server.display.DisplayDevice")
-                    .getDeclaredMethod("applyDisplaySettings", cl.loadClass("android.view.SurfaceControl$Transaction"), boolean.class),
-                    DisplayStabilityHooker.class);
+            try {
+                hook(cl.loadClass("android.hardware.display.IDisplayManager$Stub$Proxy")
+                        .getDeclaredMethod("getCompositionLuts"), 
+                        SilenceLutsHooker.class);
+            } catch (NoSuchMethodException e) {
+                hook(cl.loadClass("android.hardware.display.DisplayManager")
+                        .getDeclaredMethod("getCompositionLuts"), 
+                        SilenceLutsHooker.class);
+            }
 
             hook(cl.loadClass("com.android.server.om.OverlayManagerService")
                     .getDeclaredMethod("setEnabled", String.class, boolean.class, int.class),
@@ -64,7 +63,7 @@ public class hgs extends XposedModule {
                     HomeProtectionHooker.class);
 
         } catch (Throwable t) {
-            Log.e(TAG, "Framework Hook Failure", t);
+            Log.e(TAG, "Framework Hook Error", t);
         }
     }
 
@@ -85,11 +84,21 @@ public class hgs extends XposedModule {
                     ConstantTrueHooker.class);
 
         } catch (Throwable t) {
-            Log.e(TAG, "SystemUI Hook Failure", t);
+            Log.e(TAG, "SystemUI Hook Error", t);
         }
     }
 
     // --- HOOKER IMPLEMENTATIONS ---
+
+    @XposedHooker
+    public static class SilenceLutsHooker implements XposedInterface.Hooker {
+        @BeforeInvocation
+        public static void before(XposedInterface.BeforeHookCallback cb) {
+            // Returns null and skips the transaction to prevent HWC panic
+            cb.returnAndSkip(null);
+        }
+    }
+
     @XposedHooker
     public static class ConstantTrueHooker implements XposedInterface.Hooker {
         @BeforeInvocation
@@ -102,7 +111,7 @@ public class hgs extends XposedModule {
     public static class ConstantTwoHooker implements XposedInterface.Hooker {
         @BeforeInvocation
         public static void before(XposedInterface.BeforeHookCallback cb) {
-            cb.returnAndSkip(2);
+            cb.returnAndSkip(NAV_BAR_MODE_GESTURAL);
         }
     }
 
@@ -110,7 +119,8 @@ public class hgs extends XposedModule {
     public static class NavModeForcerHooker implements XposedInterface.Hooker {
         @BeforeInvocation
         public static void before(XposedInterface.BeforeHookCallback cb) {
-            cb.getArgs()[0] = 2;
+            // Force the requested mode to 2 before the method executes
+            cb.getArgs()[0] = NAV_BAR_MODE_GESTURAL;
         }
     }
 
@@ -119,9 +129,8 @@ public class hgs extends XposedModule {
         @BeforeInvocation
         public static void before(XposedInterface.BeforeHookCallback cb) {
             String pkg = (String) cb.getArgs()[0];
-            boolean enable = (boolean) cb.getArgs()[1];
-            if (pkg != null && pkg.contains("navbar.gestural") && !enable) {
-                cb.returnAndSkip(true);
+            if (pkg != null && pkg.contains("navbar.gestural")) {
+                cb.getArgs()[1] = true; // Always force 'enabled' to true
             }
         }
     }
@@ -134,14 +143,6 @@ public class hgs extends XposedModule {
             if (cn != null && (cn.getPackageName().contains("miui.home") || cn.getPackageName().contains("mi.launcher"))) {
                 cb.returnAndSkip(null); 
             }
-        }
-    }
-
-    @XposedHooker
-    public static class DisplayStabilityHooker implements XposedInterface.Hooker {
-        @AfterInvocation
-        public static void after(XposedInterface.AfterHookCallback cb) {
-            Log.d(TAG, "Display transaction intercepted");
         }
     }
 }
